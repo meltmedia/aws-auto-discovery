@@ -16,29 +16,20 @@
 package com.meltmedia.aws.discovery;
 
 import java.lang.reflect.Field;
-import java.net.URI;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
-import org.apache.http.HttpResponse;
-import org.apache.http.HttpStatus;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.util.EntityUtils;
 import org.w3c.dom.Node;
 
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.Request;
-import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.handlers.RequestHandler;
 import com.amazonaws.internal.StaticCredentialsProvider;
-import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2Client;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.DescribeInstancesResult;
@@ -50,110 +41,62 @@ import com.amazonaws.transform.Unmarshaller;
 import com.amazonaws.util.TimingInfo;
 
 /**
- * <p>
  * A discovery component that uses the AWS EC2 API to find cluster members.
  * Membership can be determined by a general filter and/or by nodes that have
  * similar tags.
  * </p>
  *
- * <h3>Requirements</h3>
- * <ul>
- * <li>The EC2 instances must be in the same region.</li>
- * <li>The "ec2:Describe*" action must be accessable using either IAM
- * credentials or an IAM instance profile.</li>
- * <li>The security rules must allow TCP communication between the nodes that
- * are discovered.</li>
- * </ul>
- *
- * <h3>Tag Matching</h3>
- * <p>
- * To use the tag matching feature, use the tags property to specify a list of
- * tags. All of the nodes with matching values for these tags will be
- * discovered.
- * </p>
+ * ### Requirements
  * 
- * </p>
+ * * The EC2 instances must be in the same region.
+ * * The "ec2:Describe*" action must be accessable using either IAM
+ * * credentials or an IAM instance profile.</li>
+ * * The security rules must allow TCP communication between the nodes that
+ * are discovered.
  *
- * <h3>EC2 Filters</h3>
- * <p>
- * To use EC2's filtering feature to discover nodes, specify the filters
- * attribute. The format for this attribute is:
- * </p>
- *
- * <blockquote>
- * 
- * <pre>
- * FILTERS ::= &lt;FILTER&gt; (';' &lt;FILTER&gt;)*
- * FILTER  ::= &lt;NAME&gt; '=' &lt;VALUE&gt; (',' &lt;VALUE&gt;)*
- * </pre>
- * 
- * </blockquote>
- *
- * <p>
  * EC2 instances that match all of the supplied filters will be returned. For
  * example, if you wanted to cluster with all of the running, small instances in
  * your account, you could specify:
- * </p>
- * <blockquote>
  * 
- * <pre>
- * &lt;com.meltmedia.jgroups.aws.AWS_PING
- *   timeout="3000"
- *   port_number="7800"
- *   filters="instance-state-name=running;instance-type=m1.small"
- *   access_key="YOUR_AWS_ACCESS_KEY"
- *   secret_key="YOUR_AWS_SECRET_KEY"/&gt;
- * </pre>
- * 
- * </blockquote>
+ * ```
+ * AwsAutoDiscovery discovery = AwsAutoDiscovery.builder()
+ *   .credentials("YOUR_AWS_ACCESS_KEY", "YOUR_AWS_SECRET_KEY")
+ *   .withFilters(Parsers.filters("instance-state-name=running;instance-type=m1.small")
+ *   .withEnvironment(EnvironmentInspector.build().inspect())
+ *   .build();
+ * ```
  *
- * <h3>IAM Instance Profiles</h3>
- * <p>
- * Starting with version 1.1.0, instance profiles are supported by AWS_PING. To
- * use the instance profile associated with an EC2 instance, simply omit the
- * access_key and secret_key attributes:
- * </p>
- * <blockquote>
+ * ### IAM Instance Profiles
  * 
- * <pre>
- * &lt;com.meltmedia.jgroups.aws.AWS_PING
- *   timeout="3000"
- *   port_number="7800"
- *   tags="Type,Environment"/&gt;
- * </pre>
+ * To use the instance profile associated with an EC2 instance, simply omit the
+ * accessKey and secretKey attributes when building this class.
  * 
- * </blockquote>
+ * ```
+ * AwsAutoDiscovery discovery = AwsAutoDiscovery.builder()
+ *   .withTagNames(Parsers.tagNames("Type,Environment")
+ *   .withEnvironment(EnvironmentInspector.build().inspect())
+ *   .build();
+ * ```
  *
- * <h3>References</h3>
- * <ul>
- * <li><a href=
- * "http://docs.amazonwebservices.com/AWSEC2/latest/UserGuide/Using_Filtering.html"
- * >EC2 Using Filtering</a></li>
- * <li><a href=
- * "http://docs.amazonwebservices.com/AWSEC2/latest/CommandLineReference/ApiReference-cmd-DescribeInstances.html"
- * >EC2 Describe Instances</a></li>
- * <li><a href=
- * "http://docs.amazonwebservices.com/AWSEC2/latest/UserGuide/AESDG-chapter-instancedata.html"
- * >EC2 Instance Metadata</a></li>
- * </ul>
+ * ### References
+ * 
+ * * [EC2 Using Filtering](http://docs.amazonwebservices.com/AWSEC2/latest/UserGuide/Using_Filtering.html)
+ * * [EC2 Describe Instances](http://docs.amazonwebservices.com/AWSEC2/latest/CommandLineReference/ApiReference-cmd-DescribeInstances.html)
+ * * [EC2 Instance Metadata](http://docs.amazonwebservices.com/AWSEC2/latest/UserGuide/AESDG-chapter-instancedata.html)
  * 
  * @author Christian Trimble
  * @author John McEntire
  * 
  */
+@SuppressWarnings("deprecation")
 public class AwsAutoDiscovery {
-	private static String INSTANCE_METADATA_BASE_URI = "http://169.254.169.254/latest/meta-data/";
-	private static String GET_INSTANCE_ID = INSTANCE_METADATA_BASE_URI
-			+ "instance-id";
-	private static String GET_AVAILABILITY_ZONE = INSTANCE_METADATA_BASE_URI
-			+ "placement/availability-zone";
 
 	public static class Builder {
-		protected AWSCredentialsProvider provider;
-		protected String secretKey;
+		protected AWSCredentialsProvider provider = new DefaultAWSCredentialsProviderChain();
 		protected List<Filter> filters = new ArrayList<Filter>();
-		protected List<String> tags = new ArrayList<String>();
+		protected List<String> tagNames = new ArrayList<String>();
 		protected FaultListener faultListener;
+		protected InstanceDetails instanceEnvironment;
 
 		public Builder withCredentials(String accessKey, String secretKey) {
 			this.provider = new StaticCredentialsProvider(
@@ -171,90 +114,40 @@ public class AwsAutoDiscovery {
 			return this;
 		}
 
-		public Builder withTags(Collection<String> tags) {
-			this.tags.addAll(tags);
+		public Builder withTagNames(Collection<String> tagNames) {
+			this.tagNames.addAll(tagNames);
 			return this;
 		}
 
 		public Builder withFaultListener(FaultListener faultListener) {
 			this.faultListener = faultListener;
 			return this;
-
+		}
+		
+		public Builder withEnvironment( InstanceDetails instanceEnvironment ) {
+			this.instanceEnvironment = instanceEnvironment;
+			return this;
 		}
 
 		public AwsAutoDiscovery build() throws Exception {
-			InstanceEnvironment instanceEnvironment = inspectInstance();
 			return new AwsAutoDiscovery(provider, instanceEnvironment, filters,
-					tags, faultListener);
+					tagNames, faultListener);
 		}
-	}
-
-	public static class InstanceEnvironment {
-		protected String instanceId;
-		protected String availabilityZone;
-		protected String endpoint;
-
-		public String getInstanceId() {
-			return instanceId;
-		}
-
-		void setInstanceId(String instanceId) {
-			this.instanceId = instanceId;
-		}
-
-		public String getAvailabilityZone() {
-			return availabilityZone;
-		}
-
-		void setAvailabilityZone(String availabilityZone) {
-			this.availabilityZone = availabilityZone;
-		}
-
-		public String getEndpoint() {
-			return endpoint;
-		}
-
-		void setEndpoint(String endpoint) {
-			this.endpoint = endpoint;
-		}
-	}
-
-	public static InstanceEnvironment inspectInstance() throws Exception {
-		InstanceEnvironment env = new InstanceEnvironment();
-		// get the instance id and availability zone.
-		HttpClient client = null;
-		try {
-			client = new DefaultHttpClient();
-			env.setInstanceId(Requests.getBody(client, GET_INSTANCE_ID));
-			env.setAvailabilityZone(Requests.getBody(client,
-					GET_AVAILABILITY_ZONE));
-		} finally {
-			if (client != null) {
-				client.getConnectionManager().shutdown();
-			}
-		}
-
-		// compute the EC2 endpoint based on the availability zone.
-		env.setEndpoint("ec2."
-				+ env.getAvailabilityZone().replaceAll("(.*-\\d+)[^-\\d]+",
-						"$1") + ".amazonaws.com");
-
-		return env;
 	}
 
 	protected AWSCredentialsProvider credentialProvider;
-	private InstanceEnvironment instanceEnvironment;
+	private InstanceDetails instanceEnvironment;
 	private Collection<Filter> filters;
-	private Collection<String> tags;
+	private Collection<String> tagNames;
 	private FaultListener faultListener;
 
 	public AwsAutoDiscovery(AWSCredentialsProvider credentialProvider,
-			InstanceEnvironment instanceEnvironment, List<Filter> filters,
-			List<String> tags, FaultListener faultListener) {
+			InstanceDetails instanceEnvironment, List<Filter> filters,
+			List<String> tagNames, FaultListener faultListener) {
 		this.credentialProvider = credentialProvider;
 		this.instanceEnvironment = instanceEnvironment;
 		this.filters = filters;
-		this.tags = tags;
+		this.tagNames = tagNames;
 		this.faultListener = faultListener;
 	}
 
@@ -293,7 +186,7 @@ public class AwsAutoDiscovery {
 			if (ec2 != null)
 				ec2.shutdown();
 		} catch (Exception e) {
-			// TODO: log this.
+			
 		}
 
 		return this;
@@ -311,7 +204,7 @@ public class AwsAutoDiscovery {
 		List<Filter> filters = new ArrayList<Filter>();
 
 		// if there are aws tags defined, then look them up and create filters.
-		if (tags != null) {
+		if (tagNames != null) {
 			filters.addAll(asFilters(requestInstanceTags()));
 		}
 
@@ -323,8 +216,7 @@ public class AwsAutoDiscovery {
 				.withFilters(filters);
 
 		// NOTE: the reservations group nodes together by when they were
-		// started. We
-		// need to dig through all of the reservations.
+		// started. We need to dig through all of the reservations.
 		DescribeInstancesResult filterResult = ec2.describeInstances(request);
 		for (Reservation reservation : filterResult.getReservations()) {
 			for (Instance instance : reservation.getInstances()) {
@@ -401,8 +293,7 @@ public class AwsAutoDiscovery {
 	}
 
 	/**
-	 * This class will log the request along with the response from the AWS ec2
-	 * service on fault only.
+	 * This class will adapts a FaultListener to the AWS APIs.
 	 * 
 	 * @author John McEntire
 	 *
