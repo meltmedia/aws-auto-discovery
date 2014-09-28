@@ -15,6 +15,8 @@
  */
 package com.meltmedia.aws.discovery;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -89,14 +91,14 @@ import com.amazonaws.util.TimingInfo;
  * 
  */
 @SuppressWarnings("deprecation")
-public class AwsAutoDiscovery {
+public class AwsAutoDiscovery implements Closeable {
 
 	public static class Builder {
 		protected AWSCredentialsProvider provider = new DefaultAWSCredentialsProviderChain();
 		protected List<Filter> filters = new ArrayList<Filter>();
 		protected List<String> tagNames = new ArrayList<String>();
 		protected FaultListener faultListener;
-		protected InstanceDetails instanceEnvironment;
+		protected InstanceDetails instanceDetails;
 
 		public Builder withCredentials(String accessKey, String secretKey) {
 			this.provider = new StaticCredentialsProvider(
@@ -124,13 +126,16 @@ public class AwsAutoDiscovery {
 			return this;
 		}
 		
-		public Builder withEnvironment( InstanceDetails instanceEnvironment ) {
-			this.instanceEnvironment = instanceEnvironment;
+		public Builder withInstanceDetails( InstanceDetails instanceDetails ) {
+			this.instanceDetails = instanceDetails;
 			return this;
 		}
 
-		public AwsAutoDiscovery build() throws Exception {
-			return new AwsAutoDiscovery(provider, instanceEnvironment, filters,
+		public AwsAutoDiscovery build() throws DiscoveryException {
+			if( instanceDetails == null ) {
+				instanceDetails = InstanceInspector.build().inspect();
+			}
+			return new AwsAutoDiscovery(provider, instanceDetails, filters,
 					tagNames, faultListener);
 		}
 	}
@@ -161,7 +166,7 @@ public class AwsAutoDiscovery {
 	private AmazonEC2Client ec2;
 
 	/**
-	 * Starts this protocol.
+	 * Starts the auto discovery component.
 	 */
 	public AwsAutoDiscovery start() throws Exception {
 		// start up a new ec2 client with the region specific endpoint.
@@ -178,18 +183,29 @@ public class AwsAutoDiscovery {
 	}
 
 	/**
-	 * Stops this protocol.
+	 * Quietly stops the auto discovery component.
 	 */
 	public AwsAutoDiscovery stop() {
-
 		try {
-			if (ec2 != null)
-				ec2.shutdown();
+			close();
 		} catch (Exception e) {
-			
+			// 
 		}
 
 		return this;
+	}
+	
+
+	@Override
+	public void close() throws IOException {
+		if (ec2 != null) {
+			try {
+			  ec2.shutdown();
+			}
+			finally {
+			  ec2 = null;
+			}
+		}
 	}
 
 	/**
@@ -347,4 +363,5 @@ public class AwsAutoDiscovery {
 			this.request.set(request);
 		}
 	}
+
 }
