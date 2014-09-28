@@ -1,5 +1,7 @@
 # AWS Auto Discovery
 
+[![Build Status](https://travis-ci.org/meltmedia/aws-auto-discovery.svg)](https://travis-ci.org/meltmedia/aws-auto-discovery)
+
 ## Overview
 
 This package provides an auto discovery component for finding custer members on AWS using both tag matching and filters.  It
