@@ -46,13 +46,12 @@ import com.amazonaws.util.TimingInfo;
  * A discovery component that uses the AWS EC2 API to find cluster members.
  * Membership can be determined by a general filter and/or by nodes that have
  * similar tags.
- * </p>
  *
  * ### Requirements
  * 
  * * The EC2 instances must be in the same region.
  * * The "ec2:Describe*" action must be accessable using either IAM
- * * credentials or an IAM instance profile.</li>
+ * * credentials or an IAM instance profile.
  * * The security rules must allow TCP communication between the nodes that
  * are discovered.
  *
@@ -167,6 +166,8 @@ public class AwsAutoDiscovery implements Closeable {
 
 	/**
 	 * Starts the auto discovery component.
+	 * 
+	 * @return this instance for chaining
 	 */
 	public AwsAutoDiscovery start() throws Exception {
 		// start up a new ec2 client with the region specific endpoint.
@@ -184,6 +185,8 @@ public class AwsAutoDiscovery implements Closeable {
 
 	/**
 	 * Quietly stops the auto discovery component.
+	 * 
+	 * @return this instance for chaining
 	 */
 	public AwsAutoDiscovery stop() {
 		try {
@@ -212,7 +215,7 @@ public class AwsAutoDiscovery implements Closeable {
 	 * Gets the list of private IP addresses found in AWS based on the filters
 	 * and tag names defined.
 	 * 
-	 * @return the list of private IP addresses found on AWS.
+	 * @return the list of private IP addresses found on AWS
 	 */
 	public List<String> getPrivateIpAddresses() {
 		List<String> result = new ArrayList<String>();
@@ -257,7 +260,7 @@ public class AwsAutoDiscovery implements Closeable {
 	 * Returns all of the tags defined on the EC2 instance with the specified
 	 * instanceId.
 	 * 
-	 * @return a list of the Tag objects that were found on the instance.
+	 * @return a list of the Tag objects that were found on the instance
 	 */
 	protected List<Tag> requestInstanceTags() {
 		List<Tag> tags = new ArrayList<Tag>();
